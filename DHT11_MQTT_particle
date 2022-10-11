@@ -1,0 +1,83 @@
+// This code reads DHT11 sensor and sends the data to cloud using MQTT protocol.
+// To do: re-check which MQTT-library is being used!
+
+// This #include statement was automatically added by the Particle IDE.
+#include <Adafruit_DHT_Particle.h>
+
+// This #include statement was automatically added by the Particle IDE.
+#include <MQTT.h>
+
+#define DHTPIN 2 //Digital pin 2
+
+// Uncomment whatever type you're using!
+#define DHTTYPE DHT11		// DHT 11 
+//#define DHTTYPE DHT21		// DHT 21 (AM2301)
+
+int led1 = D0; // Instead of writing D0 over and over again, we'll write led1
+// You'll need to wire an LED to this one to see it blink.
+int led2 = D7; // Instead of writing D7 over and over again, we'll write led2
+
+DHT dht(DHTPIN, DHTTYPE);
+
+unsigned long start;
+
+void callback(char* topic, byte* payload, unsigned int length);
+
+MQTT client("broker.hivemq.com", 1883, callback);
+
+// recieve message
+void callback(char* topic, byte* payload, unsigned int length) {
+    
+    char p[length + 1];
+    memcpy(p, payload, length);
+    p[length] = NULL;
+    
+   // int result = dht.acquireAndWait(2000);
+
+    float h = dht.getHumidity();
+    float t = dht.getTempCelcius();
+
+	String PubStr = "{\"T\":" + String(t) + "," + "\"H\":" + String(h) + "}";
+    client.publish("drone/data", PubStr);
+    
+    Particle.publish(PubStr);
+}
+
+void setup() {
+    
+    dht.begin();
+    
+    start = millis();
+
+    client.connect("");
+
+    if (client.isConnected()) {
+        client.subscribe("drone/request");
+    }
+    
+// define the ports to output instead of input    
+    pinMode(led1, OUTPUT);
+    pinMode(led2, OUTPUT);
+}
+
+void loop() {
+    
+    //if(millis() - start > 300000) System.reset();
+    if (client.isConnected()) client.loop();
+
+// read humidity and temperature data. Note that Celcius is written with two C's.
+    float h = dht.getHumidity();
+    float t = dht.getTempCelcius();
+
+// checks if humidity data gives a reading
+     if (h > 1)
+  {
+      
+    //sets led on
+   digitalWrite(led1, HIGH);
+   digitalWrite(led2, HIGH);}
+else {
+    //sets led off
+   digitalWrite(led1, LOW);
+   digitalWrite(led2, LOW);}
+}
