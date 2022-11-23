@@ -1,0 +1,222 @@
+#include <GSM.h>
+#include <SPI.h>
+#include <PubSubClient.h>
+
+//#include <SparkFun_SCD4x_Arduino_Library.h>
+//#include <dht.h>
+//#include <ArduinoJson.h>
+//#include <ArduinoJson.hpp>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+
+#define BME_SCK 13
+#define BME_MISO 12
+#define BME_MOSI 11
+#define BME_CS 10
+
+//Arduino GSM Shield V2
+// PIN number if necessary
+#define PINNUMBER ""
+
+// APN information obtained from your network provider
+#define GPRS_APN "data.dna.fi" // replace with your GPRS APN
+#define GPRS_APN "internet" // Telia
+#define GPRS_LOGIN "" // replace with your GPRS login
+#define GPRS_PASSWORD "" // replace with your GPRS password
+
+// initialize the library instances
+GSMClient client;
+GPRS gprs;
+GSM gsmAccess;
+
+
+PubSubClient mqttClient(client);
+
+// oman korkeuden ASL saa täältä http://gpspekka.kapsi.fi
+#define P_default (1013.25)
+#define P_FMI (1016.00)
+
+//DHT11 tai DHT21
+//#define outPin 8
+//dht DHT;
+
+//SDC41
+//SCD4x mySensor;
+
+//BME280
+Adafruit_BME280 bme;  // I2C
+//Adafruit_BME280 bme(BME_CS); // hardware SPI
+//Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
+
+//LM35
+const int lm35_pin = A1;
+
+unsigned long delayTime;
+
+void callback(char* topic, byte* payload, unsigned int length) {
+                
+ // Serial.print("message arrived [");
+ // Serial.print(topic);
+ // Serial.print("] ");
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+void setup() {
+  Serial.begin(9600);
+  //StartGSM(); 
+  //connect_broker();
+
+  unsigned status;
+
+  // BME280
+  status = bme.begin(0x76);
+  // You can also pass in a Wire library object like &Wire2
+  // status = bme.begin(0x76, &Wire2)
+
+  //SDC41
+  //mySensor.begin();
+  delayTime = 5000;
+}
+
+unsigned long lastConn = millis();
+
+void loop() {
+  delay(delayTime);
+
+if (!mqttClient.connected()) {
+    connect_broker();
+  }
+  
+  if(millis() - lastConn > 15000) {
+    publish_data(); 
+    lastConn = millis();
+    Serial.println();
+  }
+  
+  mqttClient.loop();
+ 
+}
+
+
+void StartGSM() {
+
+// Serial.println("starting GSM web client.");
+ // connection state
+ boolean notConnected = true;
+
+ // Start GSM shield
+  while(notConnected) {
+    if((gsmAccess.begin(PINNUMBER)==GSM_READY) &
+      (gprs.attachGPRS(GPRS_APN, GPRS_LOGIN, GPRS_PASSWORD)==GPRS_READY))
+      notConnected = false;
+    else {
+    Serial.println("not connected");
+    delay(1000);
+    }
+  }
+}
+
+
+void connect_broker() {
+
+  char server[] = "broker.hivemq.com"; // the broker URL
+  int port = 1883;
+  
+//  Serial.print("connecting to broker...");
+  mqttClient.setServer(server, port);
+  mqttClient.setCallback(callback);
+
+  while(!mqttClient.connected()) {
+
+//    if(mqttClient.connect("myClientID", "YYYYYYYYYY", "XXXXXXXXX")) { //username and password
+    if(mqttClient.connect("myClientID")) {
+
+  //    Serial.println(" connected");
+      // connection succeeded
+      mqttClient.subscribe("testTopic/#");
+    } else {
+    // connection failed
+  //  Serial.print("broker connection failed, rc=");
+    Serial.print(mqttClient.state());// will provide more information on failure
+   // Serial.println(" try again in 5 seconds");
+    delay(5000);
+    }
+  }
+}
+
+void publish_message() {
+  if(mqttClient.connect("clientId-xxxxxxxxxx")) {
+    mqttClient.publish("testTopic554", "hello world");
+    delay(5000);
+  }
+}
+
+void publish_data() {  
+
+  Serial.println("publishing...");
+  
+  //DHT21
+ // float readData = DHT.read2302(outPin);
+
+  //LM35
+  int lm35adc_value;
+  float LM35_T;
+  lm35adc_value = analogRead(lm35_pin);        // Read Temperature 
+  LM35_T = (float(lm35adc_value) * 4.8828125); // 5V/1024 =4.8828125 
+  LM35_T = (LM35_T / 10);                      // LM35 gives output of 10mv/°C 
+
+  // 200 on jo ihan limitillä!?
+
+  //tämä ei toimi, yritys on tämä.
+  //int length=200;
+
+  /*StaticJsonDocument<200> doc;
+  //doc["_id"] = "multidataa";
+  doc["dht_T"] = DHT.temperature;
+  doc["bme_T"] = bme.readTemperature();
+  doc["SCD41_T"] = mySensor.getTemperature();
+  doc["LM35_T"] = LM35_T;
+
+  doc["dht_RH"] = DHT.humidity;
+  doc["bme_RH"] = bme.readHumidity();
+  doc["SCD41_RH"] = mySensor.getHumidity();
+
+  doc["SCD41_CO2"] = mySensor.getCO2();
+
+  doc["bme_P"] = bme.readPressure();
+  doc["bme_h_default"] = bme.readAltitude(P_default);
+  doc["bme_h_fmi"] = bme.readAltitude(P_FMI);
+
+*/
+
+ // serializeJson(doc, Serial);
+  Serial.println();
+
+// kaikki data, muisti loppuu kesken
+//String data = " {\"T_DHT\":" + String(DHT.temperature) + ", " + "\"T_BME\":" + String(bme.readTemperature()) + ", " + "\"T_SCD41\":" + String(mySensor.getTemperature()) + ", " + "\"T_LM35\":" + String(LM35_T) + ", " + "\"RH_DHT\":" + String(DHT.humidity) + ", " + "\"RH_BME\":" + String(bme.readHumidity()) + ", " + "\"RH_SCD41\":" + String(mySensor.getHumidity()) + ", " + "\"CO2_SCD41\":" + String(mySensor.getCO2()) + ", " + "\"P_BME\":" + String(bme.readPressure()) + ", " + "\"h_default\":" + String(bme.readAltitude(P_default)) + ", " + "\"h_FMI\":" + String(bme.readAltitude(P_FMI)) + "}\n " ;
+
+
+//String data = "1";
+
+
+// Ainoastaan BME + lm35, mutta muisti ei lopu 
+String data = " {\"T_bme\":" + String(bme.readTemperature()) + ", " + "\"T_LM35\":" + String(LM35_T) + ", " + "\"RH_BME\":" + String(bme.readHumidity()) + ", " + "\"P_BME\":" + String(bme.readPressure()) + "\"h_def\":" + String(bme.readAltitude(P_default)) + ", " + "\"h_FMI\":" + String(bme.readAltitude(P_FMI)) + "}\n " ;
+
+
+Serial.print(data);
+Serial.println();
+
+int length = data.length();
+
+  char msgBuffer[length];
+  data.toCharArray(msgBuffer,length+1);
+  Serial.println(msgBuffer);
+
+  mqttClient.publish("testTopic554", msgBuffer); //Publish data to HiveMq
+
+}
+
