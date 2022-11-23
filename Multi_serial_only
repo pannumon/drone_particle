@@ -1,0 +1,110 @@
+#include <SPI.h>
+
+#include <SparkFun_SCD4x_Arduino_Library.h>
+#include <dht.h>
+#include <ArduinoJson.h>
+#include <ArduinoJson.hpp>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+
+#define BME_SCK 13
+#define BME_MISO 12
+#define BME_MOSI 11
+#define BME_CS 10
+
+// oman korkeuden ASL saa täältä http://gpspekka.kapsi.fi
+#define P_default (1013.25)
+#define P_FMI (1016.00)
+
+//DHT11 tai DHT21
+#define outPin 8
+dht DHT;
+
+//SDC41
+SCD4x mySensor;
+
+//BME280
+Adafruit_BME280 bme;  // I2C
+//Adafruit_BME280 bme(BME_CS); // hardware SPI
+//Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
+
+//LM35
+const int lm35_pin = A1;
+
+unsigned long delayTime;
+
+void callback(char* topic, byte* payload, unsigned int length) {
+                
+ // Serial.print("message arrived [");
+ // Serial.print(topic);
+ // Serial.print("] ");
+  for (int i=0;i<length;i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+void setup() {
+  Serial.begin(9600);
+  //StartGSM(); 
+  //connect_broker();
+
+  unsigned status;
+
+  // BME280
+  status = bme.begin(0x76);
+  // You can also pass in a Wire library object like &Wire2
+  // status = bme.begin(0x76, &Wire2)
+
+  //SDC41
+  //mySensor.begin();
+  delayTime = 5000;
+}
+
+unsigned long lastConn = millis();
+
+void loop() {
+  delay(delayTime);
+}
+
+void publish_data() {  
+
+  Serial.println("publishing...");
+  
+  //DHT21
+  float readData = DHT.read2302(outPin);
+
+  //LM35
+  int lm35adc_value;
+  float LM35_T;
+  lm35adc_value = analogRead(lm35_pin);        // Read Temperature 
+  LM35_T = (float(lm35adc_value) * 4.8828125); // 5V/1024 =4.8828125 
+  LM35_T = (LM35_T / 10);                      // LM35 gives output of 10mv/°C 
+
+  // 200 on jo ihan limitillä!?
+  StaticJsonDocument<200> doc;
+  //doc["_id"] = "multidataa";
+  doc["dht_T"] = DHT.temperature;
+  doc["bme_T"] = bme.readTemperature();
+  doc["SCD41_T"] = mySensor.getTemperature();
+  doc["LM35_T"] = LM35_T;
+
+  doc["dht_RH"] = DHT.humidity;
+  doc["bme_RH"] = bme.readHumidity();
+  doc["SCD41_RH"] = mySensor.getHumidity();
+
+  doc["SCD41_CO2"] = mySensor.getCO2();
+
+  doc["bme_P"] = bme.readPressure();
+  doc["bme_h_default"] = bme.readAltitude(P_default);
+  doc["bme_h_fmi"] = bme.readAltitude(P_FMI);
+
+  serializeJson(doc, Serial);
+  Serial.println();
+
+// Vaihtoehtoinen menetelmä
+//String data = " {\"T_DHT\":" + String(DHT.temperature) + ", " + "\"T_BME\":" + String(bme.readTemperature()) + ", " + "\"T_SCD41\":" + String(mySensor.getTemperature()) + ", " + "\"T_LM35\":" + String(LM35_T) + ", " + "\"RH_DHT\":" + String(DHT.humidity) + ", " + "\"RH_BME\":" + String(bme.readHumidity()) + ", " + "\"RH_SCD41\":" + String(mySensor.getHumidity()) + ", " + "\"CO2_SCD41\":" + String(mySensor.getCO2()) + ", " + "\"P_BME\":" + String(bme.readPressure()) + ", " + "\"h_default\":" + String(bme.readAltitude(P_default)) + ", " + "\"h_FMI\":" + String(bme.readAltitude(P_FMI)) + "}\n " ;
+//Serial.println(data);
+}
+
